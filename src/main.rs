@@ -1,4 +1,8 @@
-use rustdis::{RequestBody, ResponseBody, generate::handle_generate};
+use rustdis::{
+    RequestBody, ResponseBody,
+    broadcast::{BroadcastState, BroadcastTrait},
+    unique_ids::handle_generate,
+};
 use serde::{Deserialize, Serialize};
 use std::io;
 
@@ -23,6 +27,7 @@ fn main() -> io::Result<()> {
 
     io::stdin().read_line(&mut buf)?;
     trimmed = buf.trim();
+    eprintln!("received this {}", serde_json::to_string(&trimmed).unwrap());
     let msg: RequestMessage = serde_json::from_str(trimmed)
         .unwrap_or_else(|err| panic!("Failed to deserialize '{}' with error '{}'", trimmed, err));
 
@@ -50,11 +55,13 @@ fn main() -> io::Result<()> {
         panic!("Expected first message to be init");
     };
 
+    let mut broadcast_state = BroadcastState::default();
     loop {
         buf.clear();
         local_msg_id += 1;
         io::stdin().read_line(&mut buf)?;
         trimmed = buf.trim();
+        eprintln!("received this {}", serde_json::to_string(&trimmed).unwrap());
         let msg: RequestMessage = serde_json::from_str(trimmed).unwrap_or_else(|err| {
             panic!("Failed to deserialize '{}' with error '{}'", trimmed, err)
         });
@@ -69,6 +76,14 @@ fn main() -> io::Result<()> {
             RequestBody::Init { .. } => panic!("Unexpected Init message type"),
 
             RequestBody::Generate(generate) => handle_generate(node_id.clone(), generate),
+
+            RequestBody::Broadcast(broadcast) => broadcast_state.handle_broadcast(broadcast),
+
+            RequestBody::Read(read) => broadcast_state.handle_read(read),
+
+            RequestBody::Topology { msg_id, .. } => ResponseBody::TopologyOk {
+                in_reply_to: msg_id,
+            },
         };
 
         let response = ResponseMessage {
@@ -85,6 +100,8 @@ fn main() -> io::Result<()> {
     }
 }
 
-// INIT: {"src": "c1", "dest": "n0", "body": {"type": "init", "msg_id": 1, "node_id": "n0", "node_ids": ["n0"]}}
-// GENERATE: { "src": "c1", "dest": "n0", "body": { "type": "generate", "msg_id": 2 } }
-
+/*
+INIT: {"src": "c1", "dest": "n0", "body": {"type": "init", "msg_id": 1, "node_id": "n0", "node_ids": ["n0"]}}
+GENERATE: { "src": "c1", "dest": "n0", "body": { "type": "generate", "msg_id": 2 } }
+TOPOLOGY: {"id":2,"src":"c1","dest":"n0","body":{"type":"topology","topology":{"n0":[]},"msg_id":1}}
+*/
