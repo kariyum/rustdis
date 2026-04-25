@@ -1,17 +1,11 @@
 use rustdis::{
-    RequestBody, ResponseBody,
-    broadcast::{BroadcastState, BroadcastTrait},
+    RequestBody, RequestMessage, ResponseBody,
+    broadcast::{BroadcastConsumer, BroadcastProducer, BroadcastState},
+    toplogy::{TopologyState, TopologyTrait},
     unique_ids::handle_generate,
 };
 use serde::{Deserialize, Serialize};
 use std::io;
-
-#[derive(Serialize, Deserialize, Debug)]
-struct RequestMessage {
-    src: String,
-    dest: String,
-    body: RequestBody,
-}
 
 #[derive(Serialize, Deserialize, Debug)]
 struct ResponseMessage {
@@ -56,6 +50,7 @@ fn main() -> io::Result<()> {
     };
 
     let mut broadcast_state = BroadcastState::default();
+    let mut topology_state = TopologyState::default();
     loop {
         buf.clear();
         local_msg_id += 1;
@@ -77,13 +72,15 @@ fn main() -> io::Result<()> {
 
             RequestBody::Generate(generate) => handle_generate(node_id.clone(), generate),
 
-            RequestBody::Broadcast(broadcast) => broadcast_state.handle_broadcast(broadcast),
+            RequestBody::Broadcast(broadcast) => {
+                let msg = broadcast_state.handle_broadcast(broadcast);
+                let broadcast_msgs =
+                    broadcast_state.notify_nodes(&mut local_msg_id, src_node_id, topology);
+            }
 
             RequestBody::Read(read) => broadcast_state.handle_read(read),
 
-            RequestBody::Topology { msg_id, .. } => ResponseBody::TopologyOk {
-                in_reply_to: msg_id,
-            },
+            RequestBody::Topology(topology) => topology_state.handle_toplogy(topology),
         };
 
         let response = ResponseMessage {

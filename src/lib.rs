@@ -1,8 +1,17 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 pub mod broadcast;
+pub mod toplogy;
 pub mod unique_ids;
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RequestMessage {
+    pub src: String,
+    pub dest: String,
+    pub body: RequestBody,
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -24,11 +33,13 @@ pub enum RequestBody {
 
     Read(Read),
 
-    Topology {
-        msg_id: u32,
-        #[serde(flatten)]
-        topology: Value,
-    },
+    Topology(Topology),
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Topology {
+    msg_id: u32,
+    topology: HashMap<String, Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
