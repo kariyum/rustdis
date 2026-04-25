@@ -1,0 +1,12 @@
+services:
+    echo:
+        build: .
+        command: test -w echo --bin /usr/local/bin/rustdis --node-count 1 --time-limit 10
+        volumes:
+            - ./maelstrom/store:/maelstrom/store
+
+    unique-ids:
+        build: .
+        command: test -w unique-ids --bin /usr/local/bin/rustdis --time-limit 30 --rate 1000 --node-count 3 --availability total
+        volumes:
+            - ./maelstrom/store:/maelstrom/store

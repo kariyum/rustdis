@@ -1,47 +1,19 @@
-use std::io;
-
+use rustdis::{RequestBody, ResponseBody, generate::handle_generate};
 use serde::{Deserialize, Serialize};
+use std::io;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct RequestMessage {
     src: String,
     dest: String,
-    body: Body,
+    body: RequestBody,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct ResponseMessage {
     src: String,
     dest: String,
-    body: Response,
-}
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(tag = "type", rename_all = "snake_case")]
-enum Body {
-    Echo {
-        msg_id: u32,
-        echo: String,
-    },
-
-    Init {
-        msg_id: u32,
-        node_id: String,
-        node_ids: Vec<String>,
-    },
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(tag = "type", rename_all = "snake_case")]
-enum Response {
-    EchoOk {
-        msg_id: u32,
-        echo: String,
-        in_reply_to: u32,
-    },
-
-    InitOk {
-        in_reply_to: u32,
-    },
+    body: ResponseBody,
 }
 
 fn main() -> io::Result<()> {
@@ -54,14 +26,14 @@ fn main() -> io::Result<()> {
     let msg: RequestMessage = serde_json::from_str(trimmed)
         .unwrap_or_else(|err| panic!("Failed to deserialize '{}' with error '{}'", trimmed, err));
 
-    let node_id = if let Body::Init {
+    let node_id = if let RequestBody::Init {
         msg_id,
         node_id,
         node_ids: _,
     } = msg.body
     {
         let response = ResponseMessage {
-            body: Response::InitOk {
+            body: ResponseBody::InitOk {
                 in_reply_to: msg_id,
             },
             dest: msg.src,
@@ -87,14 +59,16 @@ fn main() -> io::Result<()> {
             panic!("Failed to deserialize '{}' with error '{}'", trimmed, err)
         });
 
-        let response_body: Response = match msg.body {
-            Body::Echo { msg_id, echo } => Response::EchoOk {
+        let response_body: ResponseBody = match msg.body {
+            RequestBody::Echo { msg_id, echo } => ResponseBody::EchoOk {
                 msg_id: local_msg_id,
                 echo,
                 in_reply_to: msg_id,
             },
 
-            Body::Init { .. } => panic!("Unexpected Init message type"),
+            RequestBody::Init { .. } => panic!("Unexpected Init message type"),
+
+            RequestBody::Generate(generate) => handle_generate(node_id.clone(), generate),
         };
 
         let response = ResponseMessage {
@@ -110,3 +84,7 @@ fn main() -> io::Result<()> {
         );
     }
 }
+
+// INIT: {"src": "c1", "dest": "n0", "body": {"type": "init", "msg_id": 1, "node_id": "n0", "node_ids": ["n0"]}}
+// GENERATE: { "src": "c1", "dest": "n0", "body": { "type": "generate", "msg_id": 2 } }
+
