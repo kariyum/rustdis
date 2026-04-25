@@ -1,4 +1,4 @@
-use std::{io, sync::mpsc::TryIter};
+use std::io;
 
 use serde::{Deserialize, Serialize};
 
@@ -57,7 +57,7 @@ fn main() -> io::Result<()> {
     let node_id = if let Body::Init {
         msg_id,
         node_id,
-        node_ids,
+        node_ids: _,
     } = msg.body
     {
         let response = ResponseMessage {
@@ -80,6 +80,7 @@ fn main() -> io::Result<()> {
 
     loop {
         buf.clear();
+        local_msg_id += 1;
         io::stdin().read_line(&mut buf)?;
         trimmed = buf.trim();
         let msg: RequestMessage = serde_json::from_str(trimmed).unwrap_or_else(|err| {
@@ -93,11 +94,7 @@ fn main() -> io::Result<()> {
                 in_reply_to: msg_id,
             },
 
-            Body::Init {
-                msg_id,
-                node_id,
-                node_ids,
-            } => panic!("Unexpected Init message type"),
+            Body::Init { .. } => panic!("Unexpected Init message type"),
         };
 
         let response = ResponseMessage {
@@ -113,4 +110,3 @@ fn main() -> io::Result<()> {
         );
     }
 }
-
