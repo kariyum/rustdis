@@ -21,7 +21,7 @@ fn main() -> io::Result<()> {
 
     io::stdin().read_line(&mut buf)?;
     trimmed = buf.trim();
-    eprintln!("received this {}", serde_json::to_string(&trimmed).unwrap());
+    eprintln!("<- {}", trimmed);
     let msg: RequestMessage = serde_json::from_str(trimmed)
         .unwrap_or_else(|err| panic!("Failed to deserialize '{}' with error '{}'", trimmed, err));
 
@@ -40,10 +40,7 @@ fn main() -> io::Result<()> {
         };
 
         println!("{}", serde_json::to_string(&response).unwrap());
-        eprintln!(
-            "responded with {}",
-            serde_json::to_string(&response).unwrap()
-        );
+        eprintln!("-> {}", serde_json::to_string(&response).unwrap());
         node_id
     } else {
         panic!("Expected first message to be init");
@@ -56,44 +53,55 @@ fn main() -> io::Result<()> {
         local_msg_id += 1;
         io::stdin().read_line(&mut buf)?;
         trimmed = buf.trim();
-        eprintln!("received this {}", serde_json::to_string(&trimmed).unwrap());
-        let msg: RequestMessage = serde_json::from_str(trimmed).unwrap_or_else(|err| {
-            panic!("Failed to deserialize '{}' with error '{}'", trimmed, err)
-        });
+        eprintln!("<- {}", trimmed);
+        if let Ok(msg) = serde_json::from_str::<RequestMessage>(trimmed) {
+            let response_body: ResponseBody = match msg.body {
+                RequestBody::Echo { msg_id, echo } => ResponseBody::EchoOk {
+                    msg_id: local_msg_id,
+                    echo,
+                    in_reply_to: msg_id,
+                },
 
-        let response_body: ResponseBody = match msg.body {
-            RequestBody::Echo { msg_id, echo } => ResponseBody::EchoOk {
-                msg_id: local_msg_id,
-                echo,
-                in_reply_to: msg_id,
-            },
+                RequestBody::Init { .. } => panic!("Unexpected Init message type"),
 
-            RequestBody::Init { .. } => panic!("Unexpected Init message type"),
+                RequestBody::Generate(generate) => handle_generate(node_id.clone(), generate),
 
-            RequestBody::Generate(generate) => handle_generate(node_id.clone(), generate),
+                RequestBody::Broadcast(broadcast) => {
+                    let body =
+                        broadcast_state.consume_broadcast(broadcast.clone(), msg.src.clone());
+                    broadcast_state
+                        .notify_nodes(
+                            &mut local_msg_id,
+                            node_id.clone(),
+                            &topology_state,
+                            broadcast,
+                        )
+                        .into_iter()
+                        .for_each(|msg| {
+                            println!("{}", serde_json::to_string(&msg).unwrap());
+                            eprintln!("-> {}", serde_json::to_string(&msg).unwrap());
+                        });
+                    body
+                }
 
-            RequestBody::Broadcast(broadcast) => {
-                let msg = broadcast_state.handle_broadcast(broadcast);
-                let broadcast_msgs =
-                    broadcast_state.notify_nodes(&mut local_msg_id, src_node_id, topology);
-            }
+                RequestBody::Read(read) => broadcast_state.handle_read(read),
 
-            RequestBody::Read(read) => broadcast_state.handle_read(read),
+                RequestBody::Topology(topology) => topology_state.handle_toplogy(topology),
+            };
 
-            RequestBody::Topology(topology) => topology_state.handle_toplogy(topology),
-        };
+            let response = ResponseMessage {
+                body: response_body,
+                dest: msg.src,
+                src: node_id.clone(),
+            };
 
-        let response = ResponseMessage {
-            body: response_body,
-            dest: msg.src,
-            src: node_id.clone(),
-        };
-
-        println!("{}", serde_json::to_string(&response).unwrap());
-        eprintln!(
-            "responded with {}",
-            serde_json::to_string(&response).unwrap()
-        );
+            println!("{}", serde_json::to_string(&response).unwrap());
+            eprintln!("-> {}", serde_json::to_string(&response).unwrap());
+        } else if let Ok(_) = serde_json::from_str::<ResponseMessage>(trimmed) {
+            ()
+        } else {
+            panic!("Failed to deserialize '{}'", trimmed)
+        }
     }
 }
 

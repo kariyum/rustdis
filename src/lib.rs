@@ -11,6 +11,7 @@ pub struct RequestMessage {
     pub src: String,
     pub dest: String,
     pub body: RequestBody,
+    pub id: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -52,7 +53,7 @@ pub struct Read {
     msg_id: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Broadcast {
     msg_id: u32,
     message: u32,
