@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use rustdis::{
     Broadcast, BroadcastOk, RequestBody, RequestMessage, ResponseBody,
     broadcast::{BroadcastConsumer, BroadcastState, propagate_broadcast},
@@ -158,23 +159,24 @@ async fn main() -> io::Result<()> {
 
     let topology_state_broadcast_handler = topology_state.clone();
     tokio::spawn(async move {
+        let mut pending_acknowledgment: Vec<RequestMessage> = Vec::new();
         while let Some(broadcast) = rx_broadcast.recv().await {
-            let mut pending_acknowledgment: Vec<RequestMessage> = Vec::new();
             match broadcast {
                 BroadcastMessage::BroadcastOk(broadcast_ok_msg) => {
                     if let ResponseBody::BroadcastOk(BroadcastOk { in_reply_to }) =
                         broadcast_ok_msg.body
                     {
-                        pending_acknowledgment = pending_acknowledgment
-                            .into_iter()
-                            .filter(|msg| {
+                        let (index, _) = pending_acknowledgment
+                            .iter()
+                            .find_position(|msg| {
                                 if let RequestBody::Broadcast(broadcast) = &msg.body {
-                                    !broadcast.msg_id == in_reply_to
+                                    broadcast.msg_id == in_reply_to
                                 } else {
-                                    true
+                                    false
                                 }
                             })
-                            .collect();
+                            .unwrap();
+                        pending_acknowledgment.swap_remove(index);
                     }
                 }
                 BroadcastMessage::Broadcast(broadcast) => {
@@ -198,9 +200,9 @@ async fn main() -> io::Result<()> {
                         .await
                         .unwrap();
 
-                    for msg in requests {
-                        tx_logger.send(Message::Request(msg)).await.unwrap();
-                    }
+                    // for msg in requests {
+                    //     tx_logger.send(Message::Request(msg)).await.unwrap();
+                    // }
                 }
                 BroadcastMessage::Retry => {
                     tx_logger
@@ -210,8 +212,8 @@ async fn main() -> io::Result<()> {
                         )))
                         .await
                         .unwrap();
-                    for msg in pending_acknowledgment {
-                        tx_logger.send(Message::Request(msg)).await.unwrap();
+                    for msg in &pending_acknowledgment {
+                        tx_logger.send(Message::Request(msg.clone())).await.unwrap();
                     }
                 }
             }
