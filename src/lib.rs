@@ -6,7 +6,7 @@ pub mod broadcast;
 pub mod toplogy;
 pub mod unique_ids;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RequestMessage {
     pub src: String,
     pub dest: String,
@@ -14,7 +14,7 @@ pub struct RequestMessage {
     pub id: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RequestBody {
     Echo {
@@ -37,26 +37,26 @@ pub enum RequestBody {
     Topology(Topology),
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Topology {
     msg_id: u32,
     topology: HashMap<String, Vec<String>>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Generate {
     msg_id: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Read {
     msg_id: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Broadcast {
-    msg_id: u32,
-    message: u32,
+    pub msg_id: u32,
+    pub message: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -77,9 +77,7 @@ pub enum ResponseBody {
         id: String,
     },
 
-    BroadcastOk {
-        in_reply_to: u32,
-    },
+    BroadcastOk(BroadcastOk),
 
     ReadOk {
         in_reply_to: u32,
@@ -89,4 +87,9 @@ pub enum ResponseBody {
     TopologyOk {
         in_reply_to: u32,
     },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BroadcastOk {
+    pub in_reply_to: u32,
 }

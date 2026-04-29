@@ -5,7 +5,7 @@ use crate::{
     toplogy::{TopologyState, TopologyTrait},
 };
 pub trait BroadcastConsumer {
-    fn consume_broadcast(&mut self, broadcast: Broadcast, sender_node_id: String) -> ResponseBody;
+    fn consume_broadcast(&mut self, message: u32) -> bool;
     fn handle_read(&self, read: Read) -> ResponseBody;
 }
 
@@ -20,23 +20,17 @@ pub trait BroadcastProducer {
 }
 
 pub struct BroadcastState {
-    last_node_broadcaster: Option<String>,
     msgs: Vec<u32>,
     msg_ids: HashSet<u32>,
 }
 
 impl BroadcastConsumer for BroadcastState {
-    fn consume_broadcast(
-        &mut self,
-        Broadcast { msg_id, message }: Broadcast,
-        sender_node_id: String,
-    ) -> ResponseBody {
-        if !self.msg_ids.contains(&message) {
+    fn consume_broadcast(&mut self, message: u32) -> bool {
+        if self.msg_ids.insert(message) {
             self.msgs.push(message);
-        }
-        self.last_node_broadcaster = Some(sender_node_id);
-        ResponseBody::BroadcastOk {
-            in_reply_to: msg_id,
+            true
+        } else {
+            false
         }
     }
 
@@ -53,7 +47,6 @@ impl Default for BroadcastState {
         BroadcastState {
             msgs: vec![],
             msg_ids: HashSet::new(),
-            last_node_broadcaster: None,
         }
     }
 }
@@ -67,7 +60,7 @@ impl BroadcastProducer for BroadcastState {
         broadcast: Broadcast,
     ) -> Vec<RequestMessage> {
         if self.msg_ids.insert(broadcast.message) {
-            *local_msg_id = *local_msg_id + (1 as u32);
+            *local_msg_id = *local_msg_id + 1;
             topology_state
                 .get_nearby_nodes(src_node_id.clone())
                 .iter()
@@ -82,4 +75,28 @@ impl BroadcastProducer for BroadcastState {
             vec![]
         }
     }
+}
+
+pub async fn propagate_broadcast(
+    local_msg_id: &mut u32,
+    src_node_id: String,
+    topology_state: &TopologyState,
+    broadcast: Broadcast,
+) -> Vec<RequestMessage> {
+    topology_state
+        .get_nearby_nodes(src_node_id.clone())
+        .iter()
+        .map(|receiver_node| {
+            *local_msg_id = *local_msg_id + 1;
+            RequestMessage {
+                id: *local_msg_id,
+                src: src_node_id.clone(),
+                dest: receiver_node.clone(),
+                body: RequestBody::Broadcast(Broadcast {
+                    msg_id: *local_msg_id,
+                    message: broadcast.message,
+                }),
+            }
+        })
+        .collect()
 }
