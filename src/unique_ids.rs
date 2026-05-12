@@ -1,12 +1,11 @@
 use rand::RngExt;
 
-use crate::{Generate, ResponseBody};
+use crate::ResponsePayload;
 
-pub fn handle_generate(seed: String, request_body: Generate) -> ResponseBody {
+pub fn handle_generate(seed: String) -> ResponsePayload {
     let mut rng = rand::rng();
     let random_number: u32 = rng.random();
-    ResponseBody::GenerateOk {
-        in_reply_to: request_body.msg_id,
+    ResponsePayload::GenerateOk {
         id: format!("{}-{}", seed, random_number),
     }
 }

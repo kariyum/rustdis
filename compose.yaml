@@ -28,3 +28,17 @@ services:
         command: test -w broadcast --bin /usr/local/bin/rustdis --node-count 5 --time-limit 20 --rate 10 --nemesis partition
         volumes:
             - ./maelstrom:/maelstrom
+
+    multi-node-broadcast-network-partitions-efficiency:
+        build: .
+        command: test -w broadcast --bin /usr/local/bin/rustdis --node-count 25 --time-limit 20 --rate 100 --latency 100
+        volumes:
+            - ./maelstrom:/maelstrom
+
+    serve:
+        build: .
+        command: serve
+        ports:
+            - "8080:8080"
+        volumes:
+            - ./maelstrom:/maelstrom

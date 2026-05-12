@@ -15,81 +15,81 @@ pub struct RequestMessage {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
+pub struct RequestBody {
+    pub msg_id: u32,
+    #[serde(flatten)]
+    pub payload: RequestPayload,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum RequestBody {
+pub enum RequestPayload {
     Echo {
-        msg_id: u32,
         echo: String,
     },
 
     Init {
-        msg_id: u32,
         node_id: String,
         node_ids: Vec<String>,
     },
 
-    Generate(Generate),
-
+    Generate,
     Broadcast(Broadcast),
-
-    Read(Read),
-
+    Read,
     Topology(Topology),
+    Sync(Sync),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Topology {
-    msg_id: u32,
     topology: HashMap<String, Vec<String>>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Generate {
-    msg_id: u32,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Read {
-    msg_id: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Broadcast {
-    pub msg_id: u32,
     pub message: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq, Default)]
+pub struct Sync {
+    pub message: Vec<u32>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ResponseBody {
+    pub msg_id: u32,
+    pub in_reply_to: u32,
+    #[serde(flatten)]
+    pub payload: ResponsePayload,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum ResponseBody {
-    EchoOk {
-        msg_id: u32,
-        echo: String,
-        in_reply_to: u32,
-    },
-
-    InitOk {
-        in_reply_to: u32,
-    },
-
-    GenerateOk {
-        in_reply_to: u32,
-        id: String,
-    },
-
-    BroadcastOk(BroadcastOk),
-
-    ReadOk {
-        in_reply_to: u32,
-        messages: Vec<u32>,
-    },
-
-    TopologyOk {
-        in_reply_to: u32,
-    },
+pub enum ResponsePayload {
+    EchoOk { echo: String },
+    InitOk,
+    GenerateOk { id: String },
+    BroadcastOk,
+    ReadOk { messages: Vec<u32> },
+    TopologyOk,
+    SyncOk { messages: Vec<u32> },
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct BroadcastOk {
-    pub in_reply_to: u32,
+#[derive(Serialize, Deserialize, Debug)]
+pub struct BroadcastRequest {
+    pub dest: String,
+    pub sync: BroadcastPayload,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(untagged)]
+pub enum BroadcastPayload {
+    Broadcast(Broadcast),
+    Sync(Sync),
+}
+
+pub struct SyncGossip {
+    pub dest: String,
+    pub sync: RequestPayload,
 }
