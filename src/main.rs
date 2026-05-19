@@ -1,12 +1,8 @@
 use rustdis::{
-    Broadcast, BroadcastPayload, BroadcastRequest, RequestBody, RequestMessage, RequestPayload,
-    ResponseBody, ResponsePayload,
-    broadcast::{
+    Broadcast, BroadcastPayload, BroadcastRequest, Log, Message, RequestBody, RequestMessage, RequestPayload, ResponseBody, ResponsePayload, broadcast::{
         BroadcastConsumer, BroadcastState, MessageBroadcast, Syncable, handle_broadcast_request,
         propagate_broadcast,
-    },
-    toplogy::{TopologyState, TopologyTrait},
-    unique_ids::handle_generate,
+    }, toplogy::{TopologyState, TopologyTrait}, unique_ids::handle_generate
 };
 use serde::{Deserialize, Serialize};
 use std::{sync::Arc, time::Duration};
@@ -15,35 +11,6 @@ use tokio::{
     sync::{Mutex, mpsc},
     time,
 };
-
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(untagged)]
-enum Message {
-    Response {
-        payload: ResponsePayload,
-        request: RequestMessage,
-    },
-    Request(BroadcastRequest),
-    Ack(ResponseMessage),
-    Log(String),
-    Retry,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(untagged)]
-enum Log {
-    Response(ResponseMessage),
-    Request(RequestMessage),
-    Requests(Vec<RequestMessage>),
-    Log(String),
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct ResponseMessage {
-    src: String,
-    dest: String,
-    body: ResponseBody,
-}
 
 async fn send(msg: Log, writer: &mut Stdout, stderr_writer: &mut Stderr) -> () {
     match msg {

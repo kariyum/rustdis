@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 pub mod broadcast;
+pub mod init;
+pub mod message_consumer;
 pub mod toplogy;
 pub mod unique_ids;
 
@@ -92,4 +94,33 @@ pub enum BroadcastPayload {
 pub struct SyncGossip {
     pub dest: String,
     pub sync: RequestPayload,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(untagged)]
+pub enum Message {
+    Response {
+        payload: ResponsePayload,
+        request: RequestMessage,
+    },
+    Request(BroadcastRequest),
+    Ack(ResponseMessage),
+    Log(String),
+    Retry,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(untagged)]
+pub enum Log {
+    Response(ResponseMessage),
+    Request(RequestMessage),
+    Requests(Vec<RequestMessage>),
+    Log(String),
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ResponseMessage {
+    src: String,
+    dest: String,
+    body: ResponseBody,
 }
