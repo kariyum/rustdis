@@ -2,9 +2,12 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::toplogy::TopologyState;
+
 pub mod broadcast;
 pub mod init;
 pub mod message_consumer;
+pub mod socket_consumer;
 pub mod toplogy;
 pub mod unique_ids;
 
@@ -123,4 +126,9 @@ pub struct ResponseMessage {
     src: String,
     dest: String,
     body: ResponseBody,
+}
+
+pub struct Init {
+    pub node_id: String,
+    pub topology_state: TopologyState,
 }

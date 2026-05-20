@@ -1,11 +1,13 @@
 use rustdis::{
-    Broadcast, BroadcastPayload, BroadcastRequest, Log, Message, RequestBody, RequestMessage, RequestPayload, ResponseBody, ResponsePayload, broadcast::{
-        BroadcastConsumer, BroadcastState, MessageBroadcast, Syncable, handle_broadcast_request,
-        propagate_broadcast,
-    }, toplogy::{TopologyState, TopologyTrait}, unique_ids::handle_generate
+    BroadcastRequest, Init, Log, Message, RequestBody, RequestMessage, ResponseBody,
+    ResponsePayload,
+    broadcast::{BroadcastState, MessageBroadcast, Syncable, handle_broadcast_request},
+    init::init,
+    message_consumer,
+    socket_consumer::handle_socket_message,
+    toplogy::TopologyState,
 };
-use serde::{Deserialize, Serialize};
-use std::{sync::Arc, time::Duration};
+use std::{clone, sync::Arc, time::Duration};
 use tokio::{
     io::{AsyncWriteExt, Stderr, Stdout},
     sync::{Mutex, mpsc},
@@ -47,192 +49,46 @@ async fn send(msg: Log, writer: &mut Stdout, stderr_writer: &mut Stderr) -> () {
     }
 }
 
-use tokio::io::AsyncBufReadExt;
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let mut buf = String::new();
     let mut reader = tokio::io::BufReader::new(tokio::io::stdin());
     let mut writer = tokio::io::stdout();
     let mut stderr_writer = tokio::io::stderr();
 
-    let mut broadcast_state = BroadcastState::default();
-    let topology_state = Arc::new(Mutex::new(TopologyState::default()));
-    let topology_state_main = topology_state.clone();
+    let (socket_tx, mut socket_rx) = mpsc::unbounded_channel::<Message>();
 
-    let (tx_logger, mut rx_logger) = mpsc::unbounded_channel::<Message>();
-
-    reader.read_line(&mut buf).await?;
-    let trimmed = buf.trim();
-    eprintln!("<- {}", trimmed);
-    let msg: RequestMessage = serde_json::from_str(trimmed)
-        .unwrap_or_else(|err| panic!("Failed to deserialize '{}' with error '{}'", trimmed, err));
-
-    let node_id = if let RequestPayload::Init {
+    let Init {
         node_id,
-        node_ids: _,
-    } = msg.clone().body.payload
-    {
-        let response = Message::Response {
-            payload: ResponsePayload::InitOk,
-            request: msg,
-        };
-        tx_logger.send(response).unwrap();
-        node_id
-    } else {
-        panic!("Expected first message to be init");
-    };
+        topology_state,
+    } = init(&mut reader, &socket_tx).await;
 
-    let tx_logger_ticker = tx_logger.clone();
     tokio::spawn(async move {
         let mut interval = time::interval(Duration::from_millis(100));
+        let socket_tx_ref = &socket_tx.clone();
         loop {
             interval.tick().await;
-            tx_logger_ticker.send(Message::Retry).unwrap();
+            socket_tx_ref.send(Message::Retry).unwrap();
         }
     });
 
-    let node_id_1 = node_id.clone();
-    let node_id_2 = node_id.clone();
-    let tx_logger_clone = tx_logger.clone();
     tokio::spawn(async move {
-        let mut buf = String::new();
-        let mut trimmed;
-        loop {
-            buf.clear();
-            reader.read_line(&mut buf).await.unwrap();
-            trimmed = buf.trim();
-            tx_logger_clone
-                .send(Message::Log(format!("<- {}", trimmed.to_string())))
-                .unwrap();
-            if let Ok(msg) = serde_json::from_str::<RequestMessage>(trimmed) {
-                let response_payload: ResponsePayload = match msg.clone().body.payload {
-                    RequestPayload::Echo { echo } => ResponsePayload::EchoOk { echo },
-                    RequestPayload::Init { .. } => panic!("Unexpected Init message type"),
-                    RequestPayload::Generate => handle_generate(node_id_1.clone()),
-                    RequestPayload::Broadcast(broadcast) => {
-                        let was_inserted = broadcast_state.consume_broadcast(broadcast.message);
-                        if was_inserted {
-                            let requests = propagate_broadcast(
-                                &node_id_1,
-                                &msg.src,
-                                &*topology_state_main.lock().await,
-                                &broadcast,
-                            )
-                            .await;
-                            for msg in requests {
-                                tx_logger_clone.send(Message::Request(msg)).unwrap();
-                            }
-                        }
-                        ResponsePayload::BroadcastOk
-                    }
-                    RequestPayload::Read => broadcast_state.handle_read(),
-                    RequestPayload::Topology(topology) => {
-                        topology_state_main.lock().await.handle_toplogy(topology)
-                    }
-                    RequestPayload::Sync(sync) => {
-                        let topology = topology_state_main.lock().await;
-                        for message in sync.message.clone() {
-                            if broadcast_state.consume_broadcast(message) {
-                                let requests = propagate_broadcast(
-                                    &node_id_1,
-                                    &msg.src,
-                                    &*topology,
-                                    &Broadcast { message },
-                                )
-                                .await;
-                                for req in requests {
-                                    tx_logger_clone.send(Message::Request(req)).unwrap();
-                                }
-                            }
-                        }
-                        ResponsePayload::SyncOk {
-                            messages: sync.message,
-                        }
-                    }
-                };
-
-                tx_logger_clone
-                    .send(Message::Response {
-                        payload: response_payload,
-                        request: msg,
-                    })
-                    .unwrap();
-            } else if let Ok(msg) = serde_json::from_str::<ResponseMessage>(trimmed) {
-                tx_logger_clone.send(Message::Ack(msg)).unwrap();
-            } else {
-                panic!("Failed to deserialize '{}'", trimmed)
-            }
-        }
+        message_consumer::socket_message_consumer(
+            reader,
+            socket_tx,
+            node_id.as_str(),
+            &topology_state,
+        )
     });
 
     let mut message_broadcast = MessageBroadcast::default();
     let mut local_msg_id = 0;
-    while let Some(message) = rx_logger.recv().await {
-        let msg = match message {
-            Message::Log(log) => Some(Log::Log(log)),
-            Message::Request(BroadcastRequest { dest, sync }) => {
-                let payload = handle_broadcast_request(sync);
-                let message = RequestMessage {
-                    src: node_id_2.clone(),
-                    dest: dest,
-                    body: RequestBody {
-                        msg_id: local_msg_id,
-                        payload,
-                    },
-                    id: local_msg_id,
-                };
-                message_broadcast.sent(&message);
-
-                local_msg_id += 1;
-                Some(Log::Request(message))
-            }
-            Message::Response { payload, request } => {
-                let message = ResponseMessage {
-                    src: node_id_2.clone(),
-                    dest: request.src,
-                    body: ResponseBody {
-                        msg_id: local_msg_id,
-                        in_reply_to: request.body.msg_id,
-                        payload,
-                    },
-                };
-                local_msg_id += 1;
-                Some(Log::Response(message))
-            }
-            Message::Ack(msg) => {
-                message_broadcast.ack(&msg.src, msg.body.in_reply_to);
-                if let ResponsePayload::SyncOk { messages } = &msg.body.payload {
-                    message_broadcast.ack_sync(msg.src.clone(), messages.clone());
-                }
-                Some(Log::Log(format!(
-                    "<- {}",
-                    serde_json::to_string(&msg).unwrap()
-                )))
-            }
-            Message::Retry => {
-                let messages = message_broadcast.sync();
-                let requests = messages
-                    .into_iter()
-                    .map(|msg| {
-                        let req = RequestMessage {
-                            src: node_id_2.clone(),
-                            dest: msg.dest,
-                            body: RequestBody {
-                                msg_id: local_msg_id,
-                                payload: msg.sync,
-                            },
-                            id: local_msg_id,
-                        };
-                        message_broadcast.sent(&req);
-
-                        local_msg_id += 1;
-                        req
-                    })
-                    .collect();
-                Some(Log::Requests(requests))
-            }
-        };
-
+    while let Some(message) = socket_rx.recv().await {
+        let msg = handle_socket_message(
+            message,
+            node_id.as_str(),
+            &mut local_msg_id,
+            &mut message_broadcast,
+        );
         if let Some(msg) = msg {
             send(msg, &mut writer, &mut stderr_writer).await;
         }
