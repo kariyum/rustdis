@@ -21,7 +21,6 @@ pub fn handle_socket_message(
                     msg_id: *local_msg_id,
                     payload,
                 },
-                id: *local_msg_id,
             };
             message_broadcast.sent(&message);
 
@@ -63,7 +62,6 @@ pub fn handle_socket_message(
                             msg_id: *local_msg_id,
                             payload: msg.sync,
                         },
-                        id: *local_msg_id,
                     };
                     message_broadcast.sent(&req);
 

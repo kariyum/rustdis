@@ -16,7 +16,6 @@ pub struct RequestMessage {
     pub src: String,
     pub dest: String,
     pub body: RequestBody,
-    pub id: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

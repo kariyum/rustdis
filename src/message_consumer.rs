@@ -41,10 +41,8 @@ pub async fn socket_message_consumer(
                     ResponsePayload::BroadcastOk
                 }
                 RequestPayload::Read => broadcast_state.handle_read(),
-                RequestPayload::Topology(topology) => {
-                    todo!()
-                    // TODO remove this
-                    // topology_state_main.lock().await.handle_toplogy(topology)
+                RequestPayload::Topology(_) => {
+                    panic!("unexpected topoloy message after init");
                 }
                 RequestPayload::Sync(sync) => {
                     for message in sync.message.clone() {

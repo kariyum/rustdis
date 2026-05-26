@@ -17,7 +17,7 @@ pub async fn init(reader: &mut BufReader<Stdin>, message_tx: &UnboundedSender<Me
     }
 }
 
-async fn process_topology(
+pub async fn process_topology(
     topology_state: &mut TopologyState,
     reader: &mut BufReader<Stdin>,
     message_tx: &UnboundedSender<Message>,
@@ -43,7 +43,7 @@ async fn process_topology(
     };
 }
 
-async fn process_init_msg(
+pub async fn process_init_msg(
     reader: &mut BufReader<Stdin>,
     message_tx: &UnboundedSender<Message>,
 ) -> String {
